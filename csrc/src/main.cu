@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // Main training entry point
 
 #include "model.h"
@@ -134,12 +134,12 @@ static void default_train_config(mllm_train_config_t *cfg) {
     cfg->pp_size = 1;
     cfg->node_id = 0;
     cfg->verbose = false;
-    cfg->log_dir = (char *)"./runs/mmllm";
+    cfg->log_dir = (char *)"./runs/entropy";
     cfg->log_every = 10;
     cfg->tensorboard = false;
     cfg->wandb = false;
-    cfg->wandb_project = (char *)"mmllm";
-    cfg->wandb_run_name = (char *)"mmllm-run";
+    cfg->wandb_project = (char *)"entropy";
+    cfg->wandb_run_name = (char *)"entropy-run";
 }
 
 static int parse_args(mllm_train_config_t *cfg, int argc, char *argv[]) {
@@ -290,7 +290,7 @@ int main(int argc, char *argv[]) {
         strncpy(host_id, getenv("MASTER_ADDR"), sizeof(host_id) - 1);
     }
 
-    MLLM_LOG_INFO("=== mmllm Training ===");
+    MLLM_LOG_INFO("=== entropy Training ===");
     MLLM_LOG_INFO("Rank %d / %d (node %d, local %d)", rank, world_size, node_id, local_rank);
     MLLM_LOG_INFO("Host: %s, Nodes: %d, GPUs/Node: %d", host_id, train_cfg.nodes, local_size);
     MLLM_LOG_INFO("Batch size: %d, Seq len: %d, Max steps: %ld",
@@ -456,6 +456,6 @@ int main(int argc, char *argv[]) {
     mllm_topology_destroy(&topo);
     mllm_nccl_destroy(&dp_comm);
 
-    MLLM_LOG_INFO("mmllm training finished.");
+    MLLM_LOG_INFO("entropy training finished.");
     return 0;
 }

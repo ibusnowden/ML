@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // Checkpoint save/restore for FSDP training
 
 #pragma once

@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // RMSNorm implementation (used in modern transformers instead of LayerNorm)
 
 #include "error.h"

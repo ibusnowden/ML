@@ -1,5 +1,5 @@
-// Copyright 2024 mmllm contributors
-// Tensor type definitions for mmllm
+// Copyright 2024 entropy contributors
+// Tensor type definitions for entropy
 
 #pragma once
 

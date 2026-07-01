@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // NCCL wrapper for distributed communication primitives
 
 #pragma once

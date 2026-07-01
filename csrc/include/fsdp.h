@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // Fully Sharded Data Parallel (FSDP) manager
 // Shards model parameters, gradients, and optimizer states across data parallel ranks
 

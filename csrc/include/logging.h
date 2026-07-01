@@ -1,5 +1,5 @@
-// Copyright 2024 mmllm contributors
-// Logging utilities for mmllm
+// Copyright 2024 entropy contributors
+// Logging utilities for entropy
 
 #pragma once
 

@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // GEMM kernels for transformer operations
 
 #include <cuda_runtime.h>

@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // Minimal scalar metrics logging for TensorBoard and W&B CLI workflows
 
 #include "metrics.h"
@@ -149,9 +149,9 @@ int mllm_metrics_init(mllm_metrics_logger_t *logger,
     logger->enabled = (tensorboard_enabled || wandb_enabled) && rank == 0;
     if (!logger->enabled) return MLLM_OK;
 
-    snprintf(logger->log_dir, sizeof(logger->log_dir), "%s", log_dir ? log_dir : "runs/mmllm");
-    snprintf(logger->wandb_project, sizeof(logger->wandb_project), "%s", wandb_project ? wandb_project : "mmllm");
-    snprintf(logger->wandb_run_name, sizeof(logger->wandb_run_name), "%s", wandb_run_name ? wandb_run_name : "mmllm-run");
+    snprintf(logger->log_dir, sizeof(logger->log_dir), "%s", log_dir ? log_dir : "runs/entropy");
+    snprintf(logger->wandb_project, sizeof(logger->wandb_project), "%s", wandb_project ? wandb_project : "entropy");
+    snprintf(logger->wandb_run_name, sizeof(logger->wandb_run_name), "%s", wandb_run_name ? wandb_run_name : "entropy-run");
     if (mkdir_p(logger->log_dir) != 0) {
         MLLM_LOG_ERROR("failed to create metrics log dir: %s", logger->log_dir);
         return MLLM_ERR_INVALID_INPUT;
@@ -164,7 +164,7 @@ int mllm_metrics_init(mllm_metrics_logger_t *logger,
 
     if (tensorboard_enabled) {
         time_t now = time(NULL);
-        snprintf(path, sizeof(path), "%s/events.out.tfevents.%ld.mmllm", logger->log_dir, (long)now);
+        snprintf(path, sizeof(path), "%s/events.out.tfevents.%ld.entropy", logger->log_dir, (long)now);
         logger->tb_file = fopen(path, "ab");
         if (!logger->tb_file) return MLLM_ERR_INVALID_INPUT;
         write_file_version_event((FILE *)logger->tb_file, (double)now);

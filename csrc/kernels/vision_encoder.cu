@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // Vision encoder: patch embedding + ViT transformer blocks
 
 #include <cuda_runtime.h>

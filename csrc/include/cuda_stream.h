@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // CUDA stream management for compute-communication overlap
 
 #pragma once

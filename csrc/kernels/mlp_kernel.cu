@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // MLP (FFN) layer kernels — SwiGLU variant for Qwen architecture
 
 #pragma once

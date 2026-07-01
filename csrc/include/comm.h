@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // Communication group abstraction for multi-GPU / multi-node coordination
 
 #pragma once

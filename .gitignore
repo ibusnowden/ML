@@ -9,3 +9,11 @@ cmake_install.cmake
 *.log
 checkpoints/
 runs/
+.cudaenv/
+.nccl_id*
+.cuda_install.log
+.ddp*.log
+.bf16dbg.log
+__pycache__/
+*.pyc
+.gdb.txt

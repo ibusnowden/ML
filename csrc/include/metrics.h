@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // Minimal scalar metrics logging for TensorBoard and W&B CLI workflows
 
 #pragma once

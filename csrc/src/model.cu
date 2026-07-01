@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // Transformer model implementation with multimodal support
 
 #include "model.h"

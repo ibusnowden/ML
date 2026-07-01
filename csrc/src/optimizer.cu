@@ -1,4 +1,4 @@
-// Copyright 2024 mmllm contributors
+// Copyright 2024 entropy contributors
 // AdamW optimizer implementation
 
 #include "optimizer.h"
