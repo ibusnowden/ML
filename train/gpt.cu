@@ -472,6 +472,8 @@ static void gpt_forward(GPT* g, const int* d_ids, int B, int T,
   if(!SKIP_NORM){
     if(use_fp8)
       rmsnorm_forward_fp8_k<<<BT,256,0,s>>>(g->ln1_out[0],g->ln1_out8[0],g->rstd1[0],x,P(g,LP(c,0,po.ln1)),BT,C,c.eps,g->fp8_act_scale);
+    else if((C&1)==0)
+      rmsnorm_forward2_k<<<BT,256,0,s>>>(g->ln1_out[0],g->rstd1[0],x,P(g,LP(c,0,po.ln1)),BT,C,c.eps);
     else
       rmsnorm_forward_k<<<BT,256,0,s>>>(g->ln1_out[0],g->rstd1[0],x,P(g,LP(c,0,po.ln1)),BT,C,c.eps);
   }
@@ -523,7 +525,10 @@ static void gpt_forward(GPT* g, const int* d_ids, int B, int T,
     linear_forward(&g->lt,s,g->atty[l],P(g,LP(c,l,po.o)),g->dln,BT,C,C); // attproj into dln
     if(SKIP_NORM) residual_forward_k<<<ceil_div(BT*C,blk),blk,0,s>>>(g->resid1[l],x,g->dln,BT*C);
     else if(use_fp8) add_rmsnorm_fwd_fp8_k<<<BT,256,0,s>>>(g->resid1[l],g->ln2_out[l],g->ln2_out8[l],g->rstd2[l],x,g->dln,P(g,LP(c,l,po.ln2)),BT,C,c.eps,g->fp8_act_scale);
-    else add_rmsnorm_fwd_k<<<BT,256,0,s>>>(g->resid1[l],g->ln2_out[l],g->rstd2[l],x,g->dln,P(g,LP(c,l,po.ln2)),BT,C,c.eps);
+    else if((C&1)==0)
+      add_rmsnorm_fwd2_k<<<BT,256,0,s>>>(g->resid1[l],g->ln2_out[l],g->rstd2[l],x,g->dln,P(g,LP(c,l,po.ln2)),BT,C,c.eps);
+    else
+      add_rmsnorm_fwd_k<<<BT,256,0,s>>>(g->resid1[l],g->ln2_out[l],g->rstd2[l],x,g->dln,P(g,LP(c,l,po.ln2)),BT,C,c.eps);
     // next layer's input norm (or final norm) is produced fused with this MLP's residual
     bf16*  nnorm = (l<c.L-1)? g->ln1_out[l+1] : g->lnf_out;
     __nv_fp8_e4m3* nnorm8 = (l<c.L-1)? g->ln1_out8[l+1] : g->lnf_out8;
@@ -543,11 +548,17 @@ static void gpt_forward(GPT* g, const int* d_ids, int B, int T,
       // fused: resid2 = resid1 + mlp_out ; next_norm = rmsnorm(resid2)
       if(SKIP_NORM) residual_forward_k<<<ceil_div(BT*C,blk),blk,0,s>>>(g->resid2[l],g->resid1[l],g->dln,BT*C);
       else if(use_fp8) add_rmsnorm_fwd_fp8_k<<<BT,256,0,s>>>(g->resid2[l],nnorm,nnorm8,nrstd,g->resid1[l],g->dln,nw,BT,C,c.eps,g->fp8_act_scale);
-      else add_rmsnorm_fwd_k<<<BT,256,0,s>>>(g->resid2[l],nnorm,nrstd,g->resid1[l],g->dln,nw,BT,C,c.eps);
+      else if((C&1)==0)
+        add_rmsnorm_fwd2_k<<<BT,256,0,s>>>(g->resid2[l],nnorm,nrstd,g->resid1[l],g->dln,nw,BT,C,c.eps);
+      else
+        add_rmsnorm_fwd_k<<<BT,256,0,s>>>(g->resid2[l],nnorm,nrstd,g->resid1[l],g->dln,nw,BT,C,c.eps);
     } else {
       copy_k<<<ceil_div(BT*C,blk),blk,0,s>>>(g->resid2[l],g->resid1[l],BT*C);
       if(use_fp8) rmsnorm_forward_fp8_k<<<BT,256,0,s>>>(nnorm,nnorm8,nrstd,g->resid2[l],nw,BT,C,c.eps,g->fp8_act_scale);
-      else rmsnorm_forward_k<<<BT,256,0,s>>>(nnorm,nrstd,g->resid2[l],nw,BT,C,c.eps);
+      else if((C&1)==0)
+        rmsnorm_forward2_k<<<BT,256,0,s>>>(nnorm,nrstd,g->resid2[l],nw,BT,C,c.eps);
+      else
+        rmsnorm_forward_k<<<BT,256,0,s>>>(nnorm,nrstd,g->resid2[l],nw,BT,C,c.eps);
     }
     x=g->resid2[l];
     PMARK("F_mlp+norm");
@@ -852,7 +863,8 @@ static void vt_forward(VT* t, const bf16* patches, int B){
   add_posembed_k<<<ceil_div(NP*vC,256),256,0,s>>>(t->patch_out,VP(t,t->o_pos),NP,t->n_patch,vC);
   bf16* x=t->patch_out;
   for(int l=0;l<t->vL;l++){
-    rmsnorm_forward_k<<<NP,256,0,s>>>(t->ln[l],t->rstd[l],x,VP(t,VL_(t,l,0)),NP,vC,1e-5f);
+    if((vC&1)==0) rmsnorm_forward2_k<<<NP,256,0,s>>>(t->ln[l],t->rstd[l],x,VP(t,VL_(t,l,0)),NP,vC,1e-5f);
+    else rmsnorm_forward_k<<<NP,256,0,s>>>(t->ln[l],t->rstd[l],x,VP(t,VL_(t,l,0)),NP,vC,1e-5f);
     long og=t->vC, ou=og+(long)vI*vC, od=ou+(long)vI*vC; // gate,up,down intra offsets
     linear_forward(&g->lt,s,t->ln[l],VP(t,VL_(t,l,og)),t->gu[l],NP,2*vI,vC);
     if((vI & 1) == 0) swiglu_forward_gu2_k<<<dim3(NP,ceil_div(vI/2,blk)),blk,0,s>>>(t->sw[l],t->gu[l],NP,vI);
@@ -861,7 +873,8 @@ static void vt_forward(VT* t, const bf16* patches, int B){
     residual_forward_k<<<ceil_div(NP*vC,blk),blk,0,s>>>(t->resid[l],x,t->dx,NP*vC);
     x=t->resid[l];
   }
-  rmsnorm_forward_k<<<NP,256,0,s>>>(t->fn_out,t->fn_rstd,x,VP(t,t->o_fn),NP,vC,1e-5f);
+  if((vC&1)==0) rmsnorm_forward2_k<<<NP,256,0,s>>>(t->fn_out,t->fn_rstd,x,VP(t,t->o_fn),NP,vC,1e-5f);
+  else rmsnorm_forward_k<<<NP,256,0,s>>>(t->fn_out,t->fn_rstd,x,VP(t,t->o_fn),NP,vC,1e-5f);
   linear_forward(&g->lt,s,t->fn_out,VP(t,t->o_proj),t->img,NP,t->C,vC); // -> [NP,C]
 }
 // backward: consumes t->dimg (grad of img tokens) -> grads; needs patches
@@ -1384,7 +1397,10 @@ int main(int argc,char**argv){
     // warmup
     int skip_adamw=env_int("ENTROPY_SKIP_ADAMW",0);
     int use_graph=env_int("ENTROPY_GRAPH",0);  // optional whole-step CUDA graph replay
-    if(default_overlap_opt()){                // fuse AdamW into backward (side stream)
+    // Graph capture records only g->stream; overlapped AdamW runs on a side stream
+    // and would be dropped by capture, silently skipping the optimizer. Disable
+    // overlap when graph replay is requested so AdamW is captured in-graph.
+    if(!use_graph && default_overlap_opt()){   // fuse AdamW into backward (side stream)
       g.overlap_opt=1; skip_adamw=1;
       g.o_lr=1e-4f; g.o_b1=0.9f; g.o_b2=0.95f; g.o_eps=1e-8f; g.o_wd=0.1f;
       g.o_bc1=1.0f-powf(0.9f,10); g.o_bc2=1.0f-powf(0.95f,10);

@@ -490,6 +490,61 @@ __global__ void add_rmsnorm_fwd_fp8_k(bf16* resid, bf16* norm, __nv_fp8_e4m3* no
     n8[j]=__nv_fp8_e4m3(v*fp8_scale);
   }
 }
+// BF16x2-packed RMSNorm forward (even C only): halves elementwise loop trips and
+// uses 128-bit packed bf16 loads/stores. Scalar fallback above handles odd C.
+__global__ void rmsnorm_forward2_k(bf16* out, float* rstd, const bf16* x, const bf16* w,
+                                   int N, int C, float eps){
+  int row=blockIdx.x; if(row>=N) return;
+  int C2=C>>1;
+  const __nv_bfloat162* x2=reinterpret_cast<const __nv_bfloat162*>(x+(size_t)row*C);
+  const __nv_bfloat162* w2=reinterpret_cast<const __nv_bfloat162*>(w);
+  __nv_bfloat162* o2=reinterpret_cast<__nv_bfloat162*>(out+(size_t)row*C);
+  __shared__ float sh[256];
+  float vals[RMS_VPT]; int cnt=0; float acc=0.f;
+  for(int j2=threadIdx.x;j2<C2;j2+=blockDim.x){
+    float2 xv=__bfloat1622float2(x2[j2]);
+    vals[cnt++]=xv.x; vals[cnt++]=xv.y; acc+=xv.x*xv.x+xv.y*xv.y;
+  }
+  sh[threadIdx.x]=acc; __syncthreads();
+  for(int s=blockDim.x/2;s>0;s>>=1){ if(threadIdx.x<s) sh[threadIdx.x]+=sh[threadIdx.x+s]; __syncthreads(); }
+  float rs=rsqrtf(sh[0]/C+eps); if(threadIdx.x==0) rstd[row]=rs;
+  cnt=0;
+  for(int j2=threadIdx.x;j2<C2;j2+=blockDim.x){
+    float2 wv=__bfloat1622float2(w2[j2]);
+    float2 vv=make_float2(vals[cnt++],vals[cnt++]);
+    o2[j2]=__floats2bfloat162_rn(vv.x*rs*wv.x, vv.y*rs*wv.y);
+  }
+}
+// BF16x2-packed fused residual-add + RMSNorm forward (even C only).
+__global__ void add_rmsnorm_fwd2_k(bf16* resid, bf16* norm, float* rstd,
+                                   const bf16* a, const bf16* b, const bf16* w,
+                                   int N, int C, float eps){
+  int row=blockIdx.x; if(row>=N) return;
+  int C2=C>>1;
+  const __nv_bfloat162* a2=reinterpret_cast<const __nv_bfloat162*>(a+(size_t)row*C);
+  const __nv_bfloat162* b2=reinterpret_cast<const __nv_bfloat162*>(b+(size_t)row*C);
+  const __nv_bfloat162* w2=reinterpret_cast<const __nv_bfloat162*>(w);
+  __nv_bfloat162* r2=reinterpret_cast<__nv_bfloat162*>(resid+(size_t)row*C);
+  __nv_bfloat162* n2=reinterpret_cast<__nv_bfloat162*>(norm+(size_t)row*C);
+  __shared__ float sh[256];
+  float vals[RMS_VPT]; int cnt=0; float acc=0.f;
+  for(int j2=threadIdx.x;j2<C2;j2+=blockDim.x){
+    float2 av=__bfloat1622float2(a2[j2]);
+    float2 bv=__bfloat1622float2(b2[j2]);
+    float v0=av.x+bv.x, v1=av.y+bv.y;
+    r2[j2]=__floats2bfloat162_rn(v0,v1);
+    vals[cnt++]=v0; vals[cnt++]=v1; acc+=v0*v0+v1*v1;
+  }
+  sh[threadIdx.x]=acc; __syncthreads();
+  for(int s=blockDim.x/2;s>0;s>>=1){ if(threadIdx.x<s) sh[threadIdx.x]+=sh[threadIdx.x+s]; __syncthreads(); }
+  float rs=rsqrtf(sh[0]/C+eps); if(threadIdx.x==0) rstd[row]=rs;
+  cnt=0;
+  for(int j2=threadIdx.x;j2<C2;j2+=blockDim.x){
+    float2 wv=__bfloat1622float2(w2[j2]);
+    float2 vv=make_float2(vals[cnt++],vals[cnt++]);
+    n2[j2]=__floats2bfloat162_rn(vv.x*rs*wv.x, vv.y*rs*wv.y);
+  }
+}
 // residual: out = a + b
 __global__ void residual_forward_k(bf16* out, const bf16* a, const bf16* b, size_t n){
   size_t i=blockIdx.x*(size_t)blockDim.x+threadIdx.x;

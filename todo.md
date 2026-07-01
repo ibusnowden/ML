@@ -212,3 +212,41 @@ H100 pass, 2026-06-11:
       reread. Added f32-dout RMSNorm backward kernels for this handoff and
       removed the now-redundant full `dln_accum` zero before chunk accumulation;
       default non-chunked LMCE remains unchanged.
+- [x] BF16x2-packed forward RMSNorm, 2026-07-01: the forward `rmsnorm_forward_k`
+      and `add_rmsnorm_fwd_k` were scalar (one bf16 per thread per iteration)
+      while the backward was already BF16x2-packed. Added `rmsnorm_forward2_k`
+      and `add_rmsnorm_fwd2_k` that process two bf16 elements per thread via
+      `__nv_bfloat162` packed loads/stores, with a `(C&1)==0` scalar fallback.
+      Wired into `gpt_forward` (ln1[0], per-layer ln2, per-layer next-norm,
+      SKIP_MLP fallback) and `vt_forward` (per-layer + final norm). Correctness:
+      `overfit` 5.58089->0.00134, `mm_overfit` 5.56500->0.00115, odd-C=100
+      `overfit` (scalar fallback) 5.58->0.00134. H100 B=48 profile: `F_mlp+norm`
+      15.30->14.50 ms, `F_qkv+rope` 4.53->4.48 ms; step 85.89->85.27 ms,
+      44.8->45.1% MFU (5-run avg 85.27 ms). RTX 6000 Ada B=16: 120.59->116.65 ms,
+      28.9->29.9% MFU. The backward RMSNorm was already BF16x2-packed, so this
+      closes the forward/backward parity.
+- [x] Graph+overlap benchmark bug fix, 2026-07-01: `ENTROPY_GRAPH=1` bench mode
+      with overlapped AdamW (`default_overlap_opt` on sm_89) captured only
+      `g->stream` in the CUDA graph; `opt_slice` launches AdamW on `g->ostream`
+      which is not captured by `cudaStreamCaptureModeThreadLocal`, silently
+      dropping the optimizer from the replayed graph. Fixed by gating
+      `overlap_opt` on `!use_graph` so graph replay captures fwd+bwd+adamw on
+      the single compute stream. sm_90 (H100) was unaffected (overlap defaults
+      off), but sm_89 bench+graph was measuring fwd+bwd only. Also confirmed
+      `ENTROPY_TRAIN_GRAPH` is unaffected (it already forces overlap_opt=0).
+- [x] A/B knob sweep on H100 B=48 (2026-07-01, post BF16x2 forward norm):
+      `ENTROPY_GRAPH=1` 84.8-85.3 ms (within noise of default 85.3 ms);
+      `ENTROPY_CE_THREADS=512/1024` slower (86.1/86.3 ms); `ENTROPY_LMCE_CHUNK`
+      91.7 ms (recomputes logits twice, slower); `ENTROPY_LMCE_FUSED_DX+DW`
+      2582 ms (custom dW/dX kernels are 100x slower than cuBLASLt GEMMs);
+      `ENTROPY_RMS_ATOMIC=0` 89.1 ms (atomic partial is faster on H100);
+      `ENTROPY_MLP_DUAL` 85.6 ms; `ENTROPY_BETA0_GRADS` 85.4 ms;
+      `ENTROPY_LT_WS_MB=2048` / `ENTROPY_AUTOTUNE_K=64` 85.6 ms (no gain).
+      Default (atomic RMSNorm, online CE, 256 CE threads, 512 MB workspace,
+      24 autotune candidates) remains best.
+- [x] Partial-zero fusion in `reduce_cols_add_k` (zero the rmsnorm dweight
+      partial in the reduce tail to skip the `zero_f32_k` launch) was tried and
+      reverted: the extra write traffic in the reduce kernel caused L2 thrashing
+      that regressed step time (85.3->85.5 ms). The separate `zero_f32_k` launch
+      is cheaper because it is a write-only memset-like kernel that does not
+      contend with the reduce's read-modify-write of the partial buffer.
